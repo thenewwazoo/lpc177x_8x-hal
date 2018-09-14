@@ -8,3 +8,4 @@ extern crate nb;
 pub mod common;
 pub mod gpio;
 pub mod serial;
+pub mod syscon;

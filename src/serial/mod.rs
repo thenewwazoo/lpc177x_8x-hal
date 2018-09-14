@@ -3,16 +3,13 @@
 use core::marker::PhantomData;
 
 use hal::serial;
+use syscon::{Clocks, PCONP, PoweredBlock};
 use lpc;
 use nb;
 
 // #[cfg(any(feature = "LQFP208", feature = "TFBGA208", feature = "TFBGA180"))]
 #[cfg(feature = "LQFP208")]
 pub mod pkg_208pin;
-
-pub mod clocking {
-    pub struct PClkSource(pub u32);
-}
 
 #[derive(Debug, Copy, Clone)]
 pub enum Event {
@@ -76,14 +73,24 @@ macro_rules! uart {
         $(
             use lpc::$UARTX;
 
+            impl<TX, RX> PoweredBlock for Serial<$UARTX, (TX, RX)> {
+                fn power_up<'w>(w: &'w mut lpc::syscon::pconp::W) -> &'w mut lpc::syscon::pconp::W {
+                    w.$pcuartX().set_bit()
+                }
+                fn power_down<'w>(w: &'w mut lpc::syscon::pconp::W) -> &'w mut lpc::syscon::pconp::W {
+                    w.$pcuartX().clear_bit()
+                }
+            }
+
             impl<TX, RX> Serial<$UARTX, (TX, RX)> {
+
                 /// Configures the $UARTX peripheral to provide 8N1 asynchronous serial communication
                 pub fn $uartX(
-                    syscon: &mut lpc::SYSCON,
+                    pconp: &mut PCONP,
                     uart: $UARTX,
                     pins: (TX, RX),
                     baud_rate: Bps,
-                    clock: clocking::PClkSource,
+                    clock: &Clocks,
                 ) -> Self
                 where
                     TX: TxPin<$UARTX>,
@@ -91,8 +98,10 @@ macro_rules! uart {
                 {
                     // From 18.2 Basic Configuration...
 
+                    pconp.power_up::<Self>();
+
                     // Power: In the PCONP register (Table 16), set bits PCUART0/2/3
-                    syscon.pconp.modify(|_,w| w.$pcuartX().set_bit());
+                    //syscon.pconp.modify(|_,w| w.$pcuartX().set_bit());
 
                     // Baud rate: In register U0/2/3LCR (Table 399), set bit DLAB =1. This enables
                     // access to registers DLL (Table 393) and DLM (Table 394) for setting the baud
@@ -113,7 +122,7 @@ macro_rules! uart {
                     // (PCLK) in order to produce the baud rate clock, which must be 16x the
                     // desired baud rate.
 
-                    let (dl, m, d) = calc_dl(clock.0, baud_rate.0).expect("failed to calculate baud dividers");
+                    let (dl, m, d) = calc_dl(clock.pclk, baud_rate.0).expect("failed to calculate baud dividers");
                     unsafe { uart.dll.dll.modify(|_,w| w.dllsb().bits((dl & 0xFF) as u8)); }
                     unsafe { uart.dlm.dlm.modify(|_,w| w.dlmsb().bits((dl >> 8) as u8 & 0xFF)); }
                     uart.fdr.modify(|_,w| unsafe {
