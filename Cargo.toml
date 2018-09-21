@@ -5,7 +5,7 @@ license = "MIT OR Apache-2.0"
 name = "lpc177x_8x-hal"
 readme = "README.md"
 repository = "https://github.com/thenewwazoo/lpc177x_8x-hal"
-version = "0.1.1"
+version = "0.1.2"
 description = "Implementation of the `embedded-hal` traits for LPC177x/8x"
 
 [features]
@@ -26,5 +26,4 @@ features = ["unproven"]
 version = "0.2"
 
 [dependencies.lpc177x_8x]
-path = "/Users/bmatt/Development/rust/lpc_things/lpc177x_8x"
 version = "0.13.3"
