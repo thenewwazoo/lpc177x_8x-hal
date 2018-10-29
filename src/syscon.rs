@@ -1,10 +1,7 @@
-
+use common::Constrain;
+use core::cmp::{min, max};
 use lpc;
 use lpc::SYSCON;
-use common::Constrain;
-
-//const FCCO_MIN_FREQ: u32 = 156_000_000_u32;
-//const FCCO_MAX_FREQ: u32 = 320_000_000_u32;
 
 impl Constrain<Syscon> for SYSCON {
     fn constrain(self) -> Syscon {
@@ -50,41 +47,40 @@ pub struct Clocks {
 }
 
 impl ClockConfig {
-
     pub fn freeze(self) -> Clocks {
         let syscon = unsafe { &(*SYSCON::ptr()) };
 
         // first, drop back to the internal RC at full speed and stop using the PLL anywhere
-        syscon.cclksel.modify(|_,w| unsafe { w.cclkdiv().bits(1) });
-        syscon.cclksel.modify(|_,w| w.cclksel().sysclk());
-        syscon.usbclksel.modify(|_,w| w.usbsel().sysclk());
-        syscon.spificlksel.modify(|_,w| w.spifisel().se_sysclk());
-        syscon.clksrcsel.modify(|_,w| w.clksrc().internal_rc_osc());
+        syscon.cclksel.modify(|_, w| unsafe { w.cclkdiv().bits(1) });
+        syscon.cclksel.modify(|_, w| w.cclksel().sysclk());
+        syscon.usbclksel.modify(|_, w| w.usbsel().sysclk());
+        syscon.spificlksel.modify(|_, w| w.spifisel().se_sysclk());
+        syscon.clksrcsel.modify(|_, w| w.clksrc().internal_rc_osc());
 
         match self.power_boost {
             BoostSel::LowPower => {
-                syscon.pboost.modify(|_,w| unsafe { w.boost().bits(0b00) });
-            },
+                syscon.pboost.modify(|_, w| unsafe { w.boost().bits(0b00) });
+            }
             BoostSel::FastFlash => {
-                syscon.pboost.modify(|_,w| unsafe { w.boost().bits(0b11) });
-            },
+                syscon.pboost.modify(|_, w| unsafe { w.boost().bits(0b11) });
+            }
         };
 
         // main_osc can drive PLL1 directly, or be selected as the sysclk src
         if let SysclkSrc::OscClk(f) = self.sys_clk {
             if f < 15_000_000 {
-                syscon.scs.modify(|_,w| w.oscrs()._1_to_20_mhz());
+                syscon.scs.modify(|_, w| w.oscrs()._1_to_20_mhz());
             } else {
-                syscon.scs.modify(|_,w| w.oscrs()._15_to_25_mhz());
+                syscon.scs.modify(|_, w| w.oscrs()._15_to_25_mhz());
             }
-            syscon.scs.modify(|_,w| w.oscen().set_bit());
+            syscon.scs.modify(|_, w| w.oscen().set_bit());
             while syscon.scs.read().oscstat().bit_is_clear() {}
-            syscon.clksrcsel.modify(|_,w| w.clksrc().main_osc());
+            syscon.clksrcsel.modify(|_, w| w.clksrc().main_osc());
         }
 
         let pll_clk = if let Some(f) = self.pll0.as_ref() {
             // turn off the PLL while we configure it
-            syscon.pll0con.modify(|_,w| w.plle().clear_bit());
+            syscon.pll0con.modify(|_, w| w.plle().clear_bit());
             syscon.pll0feed.write(|w| unsafe { w.bits(0xAA) });
             syscon.pll0feed.write(|w| unsafe { w.bits(0x55) });
 
@@ -111,18 +107,22 @@ impl ClockConfig {
             }
 
             //syscon.pll0cfg.modify(|_,w| unsafe { w.msel().bits(pllm - 1).psel().bits(pllp - 1) });
-            syscon.pll0cfg.modify(|_,w| unsafe { w.msel().bits((pllm as u8) - 1) });
+            syscon
+                .pll0cfg
+                .modify(|_, w| unsafe { w.msel().bits((pllm as u8) - 1) });
             syscon.pll0feed.write(|w| unsafe { w.bits(0xAA) });
             syscon.pll0feed.write(|w| unsafe { w.bits(0x55) });
 
-            syscon.pll0con.modify(|_,w| w.plle().set_bit());
+            syscon.pll0con.modify(|_, w| w.plle().set_bit());
             syscon.pll0feed.write(|w| unsafe { w.bits(0xAA) });
             syscon.pll0feed.write(|w| unsafe { w.bits(0x55) });
 
             while syscon.pll0stat.read().plock().bit_is_clear() {}
 
             Some(pll_out_clk) /* / pllp */
-        } else { None };
+        } else {
+            None
+        };
 
         // TODO
         if self.usb_clk.is_some() || self.emc_clk.is_some() || self.spifi_clk.is_some() {
@@ -135,30 +135,55 @@ impl ClockConfig {
         };
 
         match cclk_pclk_in {
-            100_000_001 ... 120_000_000 => match self.power_boost {
+            100_000_001...120_000_000 => match self.power_boost {
                 BoostSel::LowPower => {
-                    syscon.flashcfg.modify(|_,w| w.flashtim().variant(lpc::syscon::flashcfg::FLASHTIMW::_6_CLK));
-                },
+                    syscon.flashcfg.modify(|_, w| {
+                        w.flashtim()
+                            .variant(lpc::syscon::flashcfg::FLASHTIMW::_6_CLK)
+                    });
+                }
                 BoostSel::FastFlash => {
-                    syscon.flashcfg.modify(|_,w| w.flashtim().variant(lpc::syscon::flashcfg::FLASHTIMW::_5_CLK));
-                },
+                    syscon.flashcfg.modify(|_, w| {
+                        w.flashtim()
+                            .variant(lpc::syscon::flashcfg::FLASHTIMW::_5_CLK)
+                    });
+                }
             },
-            80_000_001 ... 100_000_000 => syscon.flashcfg.modify(|_,w| w.flashtim().variant(lpc::syscon::flashcfg::FLASHTIMW::_5_CLK)),
-            60_000_001 ... 80_000_000 => syscon.flashcfg.modify(|_,w| w.flashtim().variant(lpc::syscon::flashcfg::FLASHTIMW::_4_CLK)),
-            40_000_001 ... 60_000_000 => syscon.flashcfg.modify(|_,w| w.flashtim().variant(lpc::syscon::flashcfg::FLASHTIMW::_3_CLK)),
-            20_000_001 ... 40_000_000 => syscon.flashcfg.modify(|_,w| w.flashtim().variant(lpc::syscon::flashcfg::FLASHTIMW::_2_CLK)),
-            1 ... 20_000_000 => syscon.flashcfg.modify(|_,w| w.flashtim().variant(lpc::syscon::flashcfg::FLASHTIMW::_1_CLK)),
+            80_000_001...100_000_000 => syscon.flashcfg.modify(|_, w| {
+                w.flashtim()
+                    .variant(lpc::syscon::flashcfg::FLASHTIMW::_5_CLK)
+            }),
+            60_000_001...80_000_000 => syscon.flashcfg.modify(|_, w| {
+                w.flashtim()
+                    .variant(lpc::syscon::flashcfg::FLASHTIMW::_4_CLK)
+            }),
+            40_000_001...60_000_000 => syscon.flashcfg.modify(|_, w| {
+                w.flashtim()
+                    .variant(lpc::syscon::flashcfg::FLASHTIMW::_3_CLK)
+            }),
+            20_000_001...40_000_000 => syscon.flashcfg.modify(|_, w| {
+                w.flashtim()
+                    .variant(lpc::syscon::flashcfg::FLASHTIMW::_2_CLK)
+            }),
+            1...20_000_000 => syscon.flashcfg.modify(|_, w| {
+                w.flashtim()
+                    .variant(lpc::syscon::flashcfg::FLASHTIMW::_1_CLK)
+            }),
             _ => panic!("bad cpu clk frequency {}", self.cclk),
         };
 
-        let cclk_pre = cclk_pclk_in / self.cclk;
-        syscon.cclksel.modify(|_,w| unsafe { w.cclkdiv().bits(cclk_pre as u8) });
+        let cclk_pre = min(1, max(cclk_pclk_in / self.cclk, 4));
+        syscon
+            .cclksel
+            .modify(|_, w| unsafe { w.cclkdiv().bits(cclk_pre as u8) });
 
         let pclk_pre = cclk_pclk_in / self.pclk;
-        syscon.pclksel.modify(|_,w| unsafe { w.pclkdiv().bits(pclk_pre as u8) });
+        syscon
+            .pclksel
+            .modify(|_, w| unsafe { w.pclkdiv().bits(pclk_pre as u8) });
 
         match self.cpu_clk {
-            CpuClkSrc::PllClk => syscon.cclksel.modify(|_,w| w.cclksel().main_pll()),
+            CpuClkSrc::PllClk => syscon.cclksel.modify(|_, w| w.cclksel().main_pll()),
             _ => {}
         }
 
@@ -168,7 +193,6 @@ impl ClockConfig {
             pll: *pll_clk.as_ref().unwrap(),
         }
     }
-
 }
 
 pub enum SysclkSrc {
@@ -207,12 +231,12 @@ pub struct PCONP(());
 impl PCONP {
     pub fn power_up<B: PoweredBlock>(&self) {
         let syscon = unsafe { &(*SYSCON::ptr()) };
-        syscon.pconp.modify(|_,w| B::power_up(w));
+        syscon.pconp.modify(|_, w| B::power_up(w));
     }
 
     pub fn power_down<B: PoweredBlock>(&self) {
         let syscon = unsafe { &(*SYSCON::ptr()) };
-        syscon.pconp.modify(|_,w| B::power_down(w));
+        syscon.pconp.modify(|_, w| B::power_down(w));
     }
 }
 

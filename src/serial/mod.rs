@@ -3,9 +3,9 @@
 use core::marker::PhantomData;
 
 use hal::serial;
-use syscon::{Clocks, PCONP, PoweredBlock};
 use lpc;
 use nb;
+use syscon::{Clocks, PoweredBlock, PCONP};
 
 // #[cfg(any(feature = "LQFP208", feature = "TFBGA208", feature = "TFBGA180"))]
 #[cfg(feature = "LQFP208")]
