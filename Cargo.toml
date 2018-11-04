@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 name = "lpc177x_8x-hal"
 readme = "README.md"
 repository = "https://github.com/thenewwazoo/lpc177x_8x-hal"
-version = "0.2.0"
+version = "0.3.0"
 
 [dependencies]
 cortex-m = "0.5.7"
@@ -23,7 +23,3 @@ version = "0.13.3"
 LQFP208 = []
 default = ["LQFP208", "rt"]
 rt = ["lpc177x_8x/rt"]
-
-# This HAL crate depends on not-yet-released ADC traits
-[patch.crates-io.embedded-hal]
-git = "https://github.com/rust-embedded/embedded-hal.git"
